@@ -1,9 +1,51 @@
 #include "Chess.h"
 #include <limits>
 #include <cmath>
+#include <cstdint>
+#include <algorithm>
+
+namespace {
+
+uint64_t s_knightMoves[64];
+uint64_t s_kingMoves[64];
+
+void initMoveTables() {
+    static bool done = false;
+    if (done) return;
+    done = true;
+
+    const int knightDx[] = { 2, 2, -2, -2, 1, 1, -1, -1 };
+    const int knightDy[] = { 1, -1, 1, -1, 2, -2, 2, -2 };
+    const int kingDx[] = { 1, 1, 1, 0, 0, -1, -1, -1 };
+    const int kingDy[] = { 1, 0, -1, 1, -1, 1, 0, -1 };
+
+    for (int sq = 0; sq < 64; sq++) {
+        int x = sq % 8;
+        int y = sq / 8;
+
+        s_knightMoves[sq] = 0;
+        for (int i = 0; i < 8; i++) {
+            int nx = x + knightDx[i];
+            int ny = y + knightDy[i];
+            if (nx >= 0 && nx < 8 && ny >= 0 && ny < 8)
+                s_knightMoves[sq] |= (1ULL << (ny * 8 + nx));
+        }
+
+        s_kingMoves[sq] = 0;
+        for (int i = 0; i < 8; i++) {
+            int nx = x + kingDx[i];
+            int ny = y + kingDy[i];
+            if (nx >= 0 && nx < 8 && ny >= 0 && ny < 8)
+                s_kingMoves[sq] |= (1ULL << (ny * 8 + nx));
+        }
+    }
+}
+
+}
 
 Chess::Chess()
 {
+    initMoveTables();
     _grid = new Grid(8, 8);
 }
 
@@ -88,18 +130,148 @@ bool Chess::actionForEmptyHolder(BitHolder &holder)
     return false;
 }
 
+void Chess::drawFrame()
+{
+    // Highlight legal move
+    clearBoardHighlights();
+    if (_dragBit && _oldHolder) {
+        ChessSquare* srcSq = static_cast<ChessSquare*>(_oldHolder);
+        int fromIdx = srcSq->getRow() * 8 + srcSq->getColumn();
+        auto moves = generateMoves();
+        for (const auto& m : moves) {
+            if (m.from == fromIdx) {
+                int tx = m.to % 8, ty = m.to / 8;
+                getGrid()->getSquare(tx, ty)->setHighlighted(true);
+            }
+        }
+    }
+    Game::drawFrame();
+}
+
+void Chess::clearBoardHighlights()
+{
+    getGrid()->forEachSquare([](ChessSquare* square, int, int) {
+        square->setHighlighted(false);
+    });
+}
+
+void Chess::updateBitboards(uint64_t& whiteBB, uint64_t& blackBB) const
+{
+    whiteBB = 0;
+    blackBB = 0;
+    _grid->forEachSquare([&](ChessSquare* square, int x, int y) {
+        Bit* b = square->bit();
+        if (!b) return;
+        uint64_t bit = 1ULL << (y * 8 + x);
+        if (b->gameTag() < 128)
+            whiteBB |= bit;
+        else
+            blackBB |= bit;
+    });
+}
+
+std::vector<BitMove> Chess::generateMoves()
+{
+    std::vector<BitMove> moves;
+    uint64_t whiteBB, blackBB;
+    updateBitboards(whiteBB, blackBB);
+    uint64_t allPieces = whiteBB | blackBB;
+
+    int currentPlayer = getCurrentPlayer()->playerNumber();
+    uint64_t ourPieces = (currentPlayer == 0) ? whiteBB : blackBB;
+    uint64_t theirPieces = (currentPlayer == 0) ? blackBB : whiteBB;
+    bool isWhite = (currentPlayer == 0);
+
+    BitboardElement ourBB(ourPieces);
+    ourBB.forEachBit([&](int from) {
+        int x = from % 8, y = from / 8;
+        Bit* b = _grid->getSquare(x, y)->bit();
+        if (!b) return;
+        int tag = b->gameTag();
+        ChessPiece pieceType = static_cast<ChessPiece>(tag & 127);
+
+        if (pieceType == Knight) {
+            uint64_t targets = s_knightMoves[from] & ~ourPieces;
+            BitboardElement t(targets);
+            t.forEachBit([&](int to) { moves.push_back(BitMove(from, to, Knight)); });
+        }
+        else if (pieceType == King) {
+            uint64_t targets = s_kingMoves[from] & ~ourPieces;
+            BitboardElement t(targets);
+            t.forEachBit([&](int to) { moves.push_back(BitMove(from, to, King)); });
+        }
+        else if (pieceType == Pawn) {
+            if (isWhite) {
+                // Forward +1
+                if (y < 7) {
+                    int to = (y + 1) * 8 + x;
+                    if (!(allPieces & (1ULL << to)))
+                        moves.push_back(BitMove(from, to, Pawn));
+                }
+                // Forward +2
+                if (y == 1) {
+                    int to1 = 2 * 8 + x, to2 = 3 * 8 + x;
+                    if (!(allPieces & (1ULL << to1)) && !(allPieces & (1ULL << to2)))
+                        moves.push_back(BitMove(from, to2, Pawn));
+                }
+                // Captures diagonal
+                if (y < 7) {
+                    if (x > 0) { int to = (y + 1) * 8 + (x - 1); if (theirPieces & (1ULL << to)) moves.push_back(BitMove(from, to, Pawn)); }
+                    if (x < 7) { int to = (y + 1) * 8 + (x + 1); if (theirPieces & (1ULL << to)) moves.push_back(BitMove(from, to, Pawn)); }
+                }
+            } else {
+                // Black: forward -1
+                if (y > 0) {
+                    int to = (y - 1) * 8 + x;
+                    if (!(allPieces & (1ULL << to)))
+                        moves.push_back(BitMove(from, to, Pawn));
+                }
+                // Forward +2
+                if (y == 6) {
+                    int to1 = 5 * 8 + x, to2 = 4 * 8 + x;
+                    if (!(allPieces & (1ULL << to1)) && !(allPieces & (1ULL << to2)))
+                        moves.push_back(BitMove(from, to2, Pawn));
+                }
+                // Captures diagonal
+                if (y > 0) {
+                    if (x > 0) { int to = (y - 1) * 8 + (x - 1); if (theirPieces & (1ULL << to)) moves.push_back(BitMove(from, to, Pawn)); }
+                    if (x < 7) { int to = (y - 1) * 8 + (x + 1); if (theirPieces & (1ULL << to)) moves.push_back(BitMove(from, to, Pawn)); }
+                }
+            }
+        }
+    });
+
+    return moves;
+}
+
 bool Chess::canBitMoveFrom(Bit &bit, BitHolder &src)
 {
-    // need to implement friendly/unfriendly in bit so for now this hack
     int currentPlayer = getCurrentPlayer()->playerNumber() * 128;
     int pieceColor = bit.gameTag() & 128;
-    if (pieceColor == currentPlayer) return true;
+    if (pieceColor != currentPlayer) return false;
+
+    ChessSquare* srcSq = static_cast<ChessSquare*>(&src);
+    int fromIdx = srcSq->getRow() * 8 + srcSq->getColumn();
+
+    auto moves = generateMoves();
+    for (const auto& m : moves) {
+        if (m.from == fromIdx) return true;
+    }
     return false;
 }
 
 bool Chess::canBitMoveFromTo(Bit &bit, BitHolder &src, BitHolder &dst)
 {
-    return true;
+    ChessSquare* srcSq = static_cast<ChessSquare*>(&src);
+    ChessSquare* dstSq = static_cast<ChessSquare*>(&dst);
+    int fromIdx = srcSq->getRow() * 8 + srcSq->getColumn();
+    int toIdx = dstSq->getRow() * 8 + dstSq->getColumn();
+
+    auto moves = generateMoves();
+    for (const auto& m : moves) {
+        if (m.from == fromIdx && m.to == toIdx) return true;
+    }
+    return false;
 }
 
 void Chess::stopGame()

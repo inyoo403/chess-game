@@ -1,13 +1,28 @@
-Fork or clone your this chess project into a new GitHub repository.
+# Chess Game
 
-Add support for FEN stringsLinks to an external site. to your game setup so that instead of the current way you are setting up your game board you are setting it up with a call similar to the following call.
+Chess implementation with FEN setup, bitboard-based move generation, and legal move highlighting.
 
-FENtoBoard("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR");
+## Features
 
-Your routine should be able to take just the board position portion of a FEN string, or the entire FEN string like so:
+- **FEN String Setup**: Board initialized via `FENtoBoard("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR")`
+- **Piece Movement** (Pawn, Knight, King):
+  - Pawns: forward 1 or 2 from starting rank; diagonal capture
+  - Knights: L-shaped jumps (can jump over pieces)
+  - Kings: one square in any direction
+- **Bitboard Move Generation**: Uses `BitboardElement`, `BitMove`, and precomputed Knight/King tables
+- **Capture**: Capturing removes the opponent's piece from the board
+- **Legal Move Highlighting**: Highlights valid destination squares when dragging a piece
+- **Turn Alternation**: White and Black alternate turns
 
-FENtoBoard("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+## Not Implemented (per assignment)
 
-(you can ignore the end for now)
+- En Passant
+- Castling
+- Pawn Promotion
 
-This will allow you to quickly check that your castling, promotion and en passant code is working.
+## Build
+
+```
+cd build
+cmake --build . --config Debug
+```

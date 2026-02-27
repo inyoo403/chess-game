@@ -5,8 +5,9 @@ demo.dir/
 Testing/
 x64/
 
-# Ignore VS Code settings and workspace files
+# Ignore VS Code / Visual Studio settings
 .vscode/
+.vs/
 *.code-workspace
 
 # Ignore macOS system files

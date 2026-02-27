@@ -2,19 +2,11 @@
 
 #include "Game.h"
 #include "Grid.h"
+#include "Bitboard.h"
+#include <vector>
 
 constexpr int pieceSize = 80;
 
-enum ChessPiece
-{
-    NoPiece,
-    Pawn,
-    Knight,
-    Bishop,
-    Rook,
-    Queen,
-    King
-};
 
 class Chess : public Game
 {
@@ -23,6 +15,8 @@ public:
     ~Chess();
 
     void setUpBoard() override;
+    void drawFrame() override;
+    void clearBoardHighlights() override;
 
     bool canBitMoveFrom(Bit &bit, BitHolder &src) override;
     bool canBitMoveFromTo(Bit &bit, BitHolder &src, BitHolder &dst) override;
@@ -44,6 +38,9 @@ private:
     Player* ownerAt(int x, int y) const;
     void FENtoBoard(const std::string& fen);
     char pieceNotation(int x, int y) const;
+
+    void updateBitboards(uint64_t& whiteBB, uint64_t& blackBB) const;
+    std::vector<BitMove> generateMoves();
 
     Grid* _grid;
 };
