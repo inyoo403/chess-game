@@ -46,14 +46,18 @@ void initMoveTables() {
 Chess::Chess()
 {
     initMoveTables();
+    initMagicBitboards();
     _grid = new Grid(8, 8);
 }
 
+// Frees magic bitboard memory and deletes the grid
 Chess::~Chess()
 {
+    cleanupMagicBitboards();
     delete _grid;
 }
 
+// Returns the character notation for the piece at the given board position
 char Chess::pieceNotation(int x, int y) const
 {
     const char *wpieces = { "0PNBRQK" };
@@ -66,6 +70,7 @@ char Chess::pieceNotation(int x, int y) const
     return notation;
 }
 
+// Creates and returns a new piece sprite for the given player and piece type
 Bit* Chess::PieceForPlayer(const int playerNumber, ChessPiece piece)
 {
     const char* pieces[] = { "pawn.png", "knight.png", "bishop.png", "rook.png", "queen.png", "king.png" };
@@ -81,6 +86,7 @@ Bit* Chess::PieceForPlayer(const int playerNumber, ChessPiece piece)
     return bit;
 }
 
+// Sets up the initial chess board with all pieces in starting positions
 void Chess::setUpBoard()
 {
     setNumberOfPlayers(2);
@@ -93,6 +99,7 @@ void Chess::setUpBoard()
     startGame();
 }
 
+// Parses a FEN string and places pieces on the board accordingly
 void Chess::FENtoBoard(const std::string& fen) {
     std::string boardPart = fen.substr(0, fen.find(' '));
 
@@ -125,14 +132,15 @@ void Chess::FENtoBoard(const std::string& fen) {
     }
 }
 
+// Called when an empty square is clicked; returns false since we don't place new pieces
 bool Chess::actionForEmptyHolder(BitHolder &holder)
 {
     return false;
 }
 
+// Highlights legal move squares while dragging a piece, then draws the board
 void Chess::drawFrame()
 {
-    // Highlight legal move
     clearBoardHighlights();
     if (_dragBit && _oldHolder) {
         ChessSquare* srcSq = static_cast<ChessSquare*>(_oldHolder);
@@ -148,6 +156,7 @@ void Chess::drawFrame()
     Game::drawFrame();
 }
 
+// Removes highlight from all squares on the board
 void Chess::clearBoardHighlights()
 {
     getGrid()->forEachSquare([](ChessSquare* square, int, int) {
@@ -155,6 +164,7 @@ void Chess::clearBoardHighlights()
     });
 }
 
+// Scans the board and builds bitboards for white and black piece positions
 void Chess::updateBitboards(uint64_t& whiteBB, uint64_t& blackBB) const
 {
     whiteBB = 0;
@@ -170,6 +180,7 @@ void Chess::updateBitboards(uint64_t& whiteBB, uint64_t& blackBB) const
     });
 }
 
+// Generates all legal moves for the current player and returns them as a list
 std::vector<BitMove> Chess::generateMoves()
 {
     std::vector<BitMove> moves;
@@ -199,6 +210,21 @@ std::vector<BitMove> Chess::generateMoves()
             uint64_t targets = s_kingMoves[from] & ~ourPieces;
             BitboardElement t(targets);
             t.forEachBit([&](int to) { moves.push_back(BitMove(from, to, King)); });
+        }
+        else if (pieceType == Rook) {
+            uint64_t targets = getRookAttacks(from, allPieces) & ~ourPieces;
+            BitboardElement t(targets);
+            t.forEachBit([&](int to) { moves.push_back(BitMove(from, to, Rook)); });
+        }
+        else if (pieceType == Bishop) {
+            uint64_t targets = getBishopAttacks(from, allPieces) & ~ourPieces;
+            BitboardElement t(targets);
+            t.forEachBit([&](int to) { moves.push_back(BitMove(from, to, Bishop)); });
+        }
+        else if (pieceType == Queen) {
+            uint64_t targets = getQueenAttacks(from, allPieces) & ~ourPieces;
+            BitboardElement t(targets);
+            t.forEachBit([&](int to) { moves.push_back(BitMove(from, to, Queen)); });
         }
         else if (pieceType == Pawn) {
             if (isWhite) {
@@ -244,6 +270,7 @@ std::vector<BitMove> Chess::generateMoves()
     return moves;
 }
 
+// Checks if the given piece belongs to the current player and has any legal moves
 bool Chess::canBitMoveFrom(Bit &bit, BitHolder &src)
 {
     int currentPlayer = getCurrentPlayer()->playerNumber() * 128;
@@ -260,6 +287,7 @@ bool Chess::canBitMoveFrom(Bit &bit, BitHolder &src)
     return false;
 }
 
+// Checks if moving from src to dst is a legal move for the given piece
 bool Chess::canBitMoveFromTo(Bit &bit, BitHolder &src, BitHolder &dst)
 {
     ChessSquare* srcSq = static_cast<ChessSquare*>(&src);
@@ -274,6 +302,7 @@ bool Chess::canBitMoveFromTo(Bit &bit, BitHolder &src, BitHolder &dst)
     return false;
 }
 
+// Cleans up by destroying all pieces on the board
 void Chess::stopGame()
 {
     _grid->forEachSquare([](ChessSquare* square, int x, int y) {
@@ -281,6 +310,7 @@ void Chess::stopGame()
     });
 }
 
+// Returns the owner (player) of the piece at the given board coordinates
 Player* Chess::ownerAt(int x, int y) const
 {
     if (x < 0 || x >= 8 || y < 0 || y >= 8) {
@@ -304,11 +334,13 @@ bool Chess::checkForDraw()
     return false;
 }
 
+// Returns the board state string at the start of the game
 std::string Chess::initialStateString()
 {
     return stateString();
 }
 
+// Converts the current board into a string representation
 std::string Chess::stateString()
 {
     std::string s;
@@ -319,6 +351,7 @@ std::string Chess::stateString()
     );
     return s;}
 
+// Restores the board from a previously saved state string
 void Chess::setStateString(const std::string &s)
 {
     _grid->forEachSquare([&](ChessSquare* square, int x, int y) {

@@ -3,6 +3,7 @@
 #include "Game.h"
 #include "Grid.h"
 #include "Bitboard.h"
+#include "MagicBitboards.h"
 #include <vector>
 
 constexpr int pieceSize = 80;
